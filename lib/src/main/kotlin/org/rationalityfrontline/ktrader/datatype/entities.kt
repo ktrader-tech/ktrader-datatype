@@ -95,6 +95,16 @@ data class Bar(
 )
 
 /**
+ * Bar 的信息
+ * @param code 证券代码
+ * @param interval Bar 的时长，以秒为单位。如 300 代表该 Bar 时长为 5 分钟，3600 代表 1 小时， 86400 代表 1 天
+ */
+data class BarInfo(
+    val code: String,
+    val interval: Int,
+)
+
+/**
  * Order
  * @param accountId 资金账号
  * @param orderId 订单 ID
@@ -186,7 +196,7 @@ data class Trade(
  * @param optionsStrikePrice 期权行权价格
  * @param extras 额外数据
  */
-data class Security(
+data class SecurityInfo(
     val code: String,
     val type: SecurityType,
     val productId: String = "",
