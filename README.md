@@ -17,7 +17,7 @@ repositories {
 }
 
 dependencies {
-    implementation("org.rationalityfrontline.ktrader:ktrader-datatype:1.0.0")
+    implementation("org.rationalityfrontline.ktrader:ktrader-datatype:1.0.1")
 }
 ```
 
@@ -27,7 +27,7 @@ dependencies {
 <dependency>
     <groupId>org.rationalityfrontline.ktrader</groupId>
     <artifactId>ktrader-datatype</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.1</version>
 </dependency>
 ```
 
