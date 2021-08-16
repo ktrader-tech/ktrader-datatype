@@ -4,6 +4,9 @@ package org.rationalityfrontline.ktrader.datatype
 
 import java.time.LocalDate
 import java.time.LocalDateTime
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.sign
 
 /**
  * Tick
@@ -62,7 +65,7 @@ data class Tick(
     val todayVolume: Int,
     val todayTurnover: Double,
     val todayOpenInterest: Int,
-    var extras: MutableMap<String, Any>? = null,
+    var extras: MutableMap<String, String>? = null,
 )
 
 /**
@@ -83,16 +86,61 @@ data class Bar(
     val code: String,
     val interval: Int,
     val startTime: LocalDateTime,
-    val endTime: LocalDateTime,
-    val openPrice: Double,
-    val closePrice: Double,
-    val lowPrice: Double,
-    val highPrice: Double,
-    val volume: Int,
-    val turnover: Double,
-    val openInterestDelta: Int,
-    var extras: MutableMap<String, Any>? = null,
-)
+    var endTime: LocalDateTime,
+    var openPrice: Double,
+    var closePrice: Double,
+    var lowPrice: Double,
+    var highPrice: Double,
+    var volume: Int,
+    var turnover: Double,
+    var openInterestDelta: Int,
+    var extras: MutableMap<String, String>? = null,
+) {
+    companion object {
+        /**
+         * 创建新的 Bar
+         */
+        fun createBar(code: String, interval: Int, startTime: LocalDateTime, endTime: LocalDateTime = startTime.plusSeconds(interval.toLong()), openPrice: Double = 0.0): Bar {
+            return Bar(
+                code = code,
+                interval = interval,
+                startTime = startTime,
+                endTime = endTime,
+                openPrice = openPrice,
+                closePrice = openPrice,
+                lowPrice = if (openPrice == 0.0) Double.MAX_VALUE else openPrice,
+                highPrice = if (openPrice == 0.0) Double.MIN_VALUE else openPrice,
+                volume = 0,
+                turnover = 0.0,
+                openInterestDelta = 0,
+            )
+        }
+    }
+
+    /**
+     * 用 [tick] 更新当前 Bar 的数值（不会更新 [endTime] 与 [openPrice]）
+     */
+    fun updateTick(tick: Tick) {
+        lowPrice = min(lowPrice, tick.lastPrice)
+        highPrice = max(highPrice, tick.lastPrice)
+        closePrice = tick.lastPrice
+        volume += tick.volume
+        turnover += tick.turnover
+        openInterestDelta += tick.openInterestDelta
+    }
+
+    /**
+     * 用 [bar] 更新当前 Bar 的数值（不会更新 [endTime] 与 [openPrice]）
+     */
+    fun updateBar(bar: Bar) {
+        lowPrice = min(lowPrice, bar.lowPrice)
+        highPrice = max(highPrice, bar.highPrice)
+        closePrice = bar.closePrice
+        volume += bar.volume
+        turnover += bar.turnover
+        openInterestDelta += bar.openInterestDelta
+    }
+}
 
 /**
  * Bar 的信息
@@ -143,8 +191,26 @@ data class Order(
     var commission: Double,
     val createTime: LocalDateTime,
     var updateTime: LocalDateTime,
-    var extras: MutableMap<String, Any>? = null,
-)
+    var extras: MutableMap<String, String>? = null,
+) {
+    fun update(order: Order) {
+        status = order.status
+        statusMsg = order.statusMsg
+        filledVolume = order.filledVolume
+        turnover = order.turnover
+        avgFillPrice = order.avgFillPrice
+        frozenCash = order.frozenCash
+        commission = order.commission
+        updateTime = order.updateTime
+        if (extras == null) {
+            extras = order.extras
+        } else {
+            if (order.extras != null) {
+                extras?.putAll(order.extras!!)
+            }
+        }
+    }
+}
 
 /**
  * Trade
@@ -173,7 +239,7 @@ data class Trade(
     var offset: OrderOffset,
     var commission: Double,
     val time: LocalDateTime,
-    var extras: MutableMap<String, Any>? = null,
+    var extras: MutableMap<String, String>? = null,
 )
 
 /**
@@ -213,17 +279,26 @@ data class SecurityInfo(
     val optionsType: OptionsType = OptionsType.UNKNOWN,
     val optionsUnderlyingCode: String = "",
     val optionsStrikePrice: Double = 0.0,
-    var extras: MutableMap<String, Any>? = null,
+    var extras: MutableMap<String, String>? = null,
 )
 
 /**
  * 资产
+ *
+ * [total] = [available] + [positionValue] + [frozenByOrder]
+ *
+ * [total] = [initialCash] + [totalClosePnl] + [positionPnl] - [totalCommission]
+ *
  * @param accountId 资金账号
  * @param total 全部资产（折合现金）
  * @param available 可用资金
  * @param positionValue 持仓占用资金
  * @param frozenByOrder 挂单占用资金
  * @param todayCommission 今日手续费
+ * @param initialCash 初始资金（即累计入金 - 累计出金）
+ * @param totalClosePnl 累计平仓盈亏
+ * @param positionPnl 当前持仓盈亏
+ * @param totalCommission 累计手续费
  * @param extras 额外数据
  */
 data class Assets(
@@ -231,21 +306,46 @@ data class Assets(
     var total: Double,
     var available: Double,
     var positionValue: Double,
+    var positionPnl: Double,
     var frozenByOrder: Double,
     var todayCommission: Double,
-    var extras: MutableMap<String, Any>? = null,
-)
+    var initialCash: Double,
+    var totalClosePnl: Double,
+    var totalCommission: Double,
+    var extras: MutableMap<String, String>? = null,
+) {
+    /**
+     * 计算并更新 [total]（要求 [initialCash], [totalClosePnl], [positionPnl], [totalCommission] 已到位）
+     */
+    fun calculateTotal(): Double {
+        total = initialCash + totalClosePnl + positionPnl - totalCommission
+        return total
+    }
+    /**
+     * 计算并更新 [available]（要求 [total], [positionValue], [frozenByOrder] 已到位）
+     */
+    fun calculateAvailable(): Double {
+        available = total - positionValue - frozenByOrder
+        return available
+    }
+    /**
+     * 更新数值（先调用 [calculateTotal], 然后调用 [calculateAvailable]）
+     */
+    fun update() {
+        calculateTotal()
+        calculateAvailable()
+    }
+}
 
 /**
- * 持仓信息
+ * 持仓汇总信息
  * @param accountId 资金账号
  * @param code 证券代码
  * @param direction 持仓方向
  * @param preVolume 昨日持仓量
- * @param volume 今日持仓量
+ * @param volume 持仓量
  * @param value 持仓占用资金
  * @param todayVolume 今仓数量
- * @param yesterdayVolume 昨仓数量
  * @param frozenVolume 冻结持仓量
  * @param closeableVolume 可平持仓量
  * @param todayOpenVolume 今日累计开仓量
@@ -256,6 +356,7 @@ data class Assets(
  * @param lastPrice 最新价
  * @param pnl 净盈亏额
  * @param extras 额外数据
+ * @property yesterdayVolume 昨仓数量
  */
 data class Position(
     val accountId: String,
@@ -263,9 +364,7 @@ data class Position(
     val direction: Direction,
     var preVolume: Int,
     var volume: Int,
-    var value: Double,
     var todayVolume: Int,
-    var yesterdayVolume: Int,
     var frozenVolume: Int,
     var closeableVolume: Int,
     var todayOpenVolume: Int,
@@ -273,10 +372,142 @@ data class Position(
     var todayCommission: Double,
     var openCost: Double,
     var avgOpenPrice: Double,
-    var lastPrice: Double,
-    var pnl: Double,
-    var extras: MutableMap<String, Any>? = null,
-)
+    var lastPrice: Double = 0.0,
+    var value: Double = 0.0,
+    var pnl: Double = 0.0,
+    var extras: MutableMap<String, String>? = null,
+) {
+    val yesterdayVolume: Int get() = volume - todayVolume
+}
+
+/**
+ * 持仓明细
+ * @param accountId 资金账号
+ * @param code 证券代码
+ * @param direction 持仓方向
+ * @param details 持仓明细记录
+ */
+data class PositionDetails(
+    val accountId: String,
+    val code: String,
+    val direction: Direction,
+    val details: MutableList<PositionDetail> = mutableListOf(),
+) {
+    /**
+     * 计算汇总持仓量
+     */
+    fun getVolume(): Int = details.sumOf { it.volume }
+    /**
+     * 计算汇总今仓量
+     */
+    fun getTodayVolume(): Int = details.sumOf { it.todayVolume }
+    /**
+     * 计算汇总冻结持仓量
+     */
+    fun getFrozenVolume(): Int = details.sumOf { it.frozenVolume }
+    /**
+     * 计算开仓均价
+     */
+    fun getAvgOpenPrice(): Double {
+        var sumCost = 0.0
+        var sumVolume = 0
+        details.forEach {
+            sumCost += it.price * it.volume
+            sumVolume += it.volume
+        }
+        return sumCost / sumVolume
+    }
+    /**
+     * 生成对应的持仓汇总信息
+     */
+    fun toPosition(volumeMultiple: Int, preVolume: Int, todayOpenVolume: Int, todayCloseVolume: Int, todayCommission: Double, extras: MutableMap<String, String>? = null): Position {
+        var volume = 0
+        var todayVolume = 0
+        var frozenVolume = 0
+        var openCost = 0.0
+        details.forEach {
+            volume += it.volume
+            todayVolume += it.todayVolume
+            frozenVolume += it.frozenVolume
+            openCost += it.price * it.volume * volumeMultiple
+        }
+        return Position(
+            accountId = accountId,
+            code = code,
+            direction = direction,
+            preVolume = preVolume,
+            volume = volume,
+            value = 0.0,
+            todayVolume = todayVolume,
+            frozenVolume = frozenVolume,
+            closeableVolume = 0,
+            todayOpenVolume = todayOpenVolume,
+            todayCloseVolume = todayCloseVolume,
+            todayCommission = todayCommission,
+            openCost = openCost,
+            avgOpenPrice = openCost / volumeMultiple,
+            extras = extras,
+        )
+    }
+    /**
+     * 更新已存的持仓汇总对象
+     */
+    fun updatePosition(position: Position, volumeMultiple: Int) {
+        var volume = 0
+        var todayVolume = 0
+        var frozenVolume = 0
+        var openCost = 0.0
+        details.forEach {
+            volume += it.volume
+            todayVolume += it.todayVolume
+            frozenVolume += it.frozenVolume
+            openCost += it.price * it.volume * volumeMultiple
+        }
+        position.volume = volume
+        position.todayVolume = todayVolume
+        position.frozenVolume = frozenVolume
+        position.openCost = openCost
+        position.avgOpenPrice = openCost / volume / volumeMultiple
+    }
+    /**
+     * 返回开仓价为 [price] 的持仓明细。如果不存在该开仓价的持仓记录，则返回 null
+     */
+    operator fun get(price: Double): PositionDetail? {
+        val index = details.binarySearch { sign(it.price - price).toInt()}
+        return if (index < 0) null else details[index]
+    }
+    /**
+     * 返回开仓价为 [price] 的持仓明细。如果不存在该开仓价的持仓记录，则插入一条空白的持仓明细并返回该新建的持仓明细
+     */
+    fun getOrPut(price: Double): PositionDetail {
+        return get(price) ?: run {
+            val detail = PositionDetail(price = price)
+            var i = details.indexOfFirst { it.price > price }
+            i = if (i == -1) details.size else i
+            details.add(i, detail)
+            return@run detail
+        }
+    }
+}
+
+/**
+ * 单条持仓明细记录
+ * @param price 开仓价格
+ * @param volume 持仓数量
+ * @param todayVolume 今仓数量
+ * @param frozenVolume 冻结数量
+ * @param updateTime 最后持仓变动时间
+ * @property yesterdayVolume 昨仓数量
+ */
+data class PositionDetail(
+    val price: Double,
+    var volume: Int = 0,
+    var todayVolume: Int = 0,
+    var frozenVolume: Int = 0,
+    var updateTime: LocalDateTime = LocalDateTime.now(),
+) {
+    val yesterdayVolume: Int get() = volume - todayVolume
+}
 
 /**
  * 手续费率
@@ -309,7 +540,7 @@ data class CommissionRate(
     var orderCancelFeeByVolume: Double = 0.0,
     val optionsStrikeRatioByMoney: Double = 0.0,
     val optionsStrikeRatioByVolume: Double = 0.0,
-    var extras: MutableMap<String, Any>? = null,
+    var extras: MutableMap<String, String>? = null,
 )
 
 /**
@@ -327,5 +558,5 @@ data class MarginRate(
     val longMarginRatioByVolume: Double,
     val shortMarginRatioByMoney: Double,
     val shortMarginRatioByVolume: Double,
-    var extras: MutableMap<String, Any>? = null,
+    var extras: MutableMap<String, String>? = null,
 )

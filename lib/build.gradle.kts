@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "org.rationalityfrontline.ktrader"
-version = "1.0.1"
+version = "1.1.0"
 val NAME = "ktrader-datatype"
 val DESC = "KTrader Datatype"
 val GITHUB_REPO = "ktrader-tech/ktrader-datatype"
