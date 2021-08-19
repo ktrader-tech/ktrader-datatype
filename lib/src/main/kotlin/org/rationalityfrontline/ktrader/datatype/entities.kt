@@ -66,7 +66,14 @@ data class Tick(
     val todayTurnover: Double,
     val todayOpenInterest: Int,
     var extras: MutableMap<String, String>? = null,
-)
+) {
+    /**
+     * 返回一份自身的完全拷贝
+     */
+    fun deepCopy(): Tick {
+        return copy(extras = extras?.toMutableMap())
+    }
+}
 
 /**
  * Bar
@@ -140,6 +147,13 @@ data class Bar(
         turnover += bar.turnover
         openInterestDelta += bar.openInterestDelta
     }
+
+    /**
+     * 返回一份自身的完全拷贝
+     */
+    fun deepCopy(): Bar {
+        return copy(extras = extras?.toMutableMap())
+    }
 }
 
 /**
@@ -193,6 +207,9 @@ data class Order(
     var updateTime: LocalDateTime,
     var extras: MutableMap<String, String>? = null,
 ) {
+    /**
+     * 用 [order] 更新自身字段
+     */
     fun update(order: Order) {
         status = order.status
         statusMsg = order.statusMsg
@@ -209,6 +226,13 @@ data class Order(
                 extras?.putAll(order.extras!!)
             }
         }
+    }
+
+    /**
+     * 返回一份自身的完全拷贝
+     */
+    fun deepCopy(): Order {
+        return copy(extras = extras?.toMutableMap())
     }
 }
 
@@ -240,7 +264,14 @@ data class Trade(
     var commission: Double,
     val time: LocalDateTime,
     var extras: MutableMap<String, String>? = null,
-)
+) {
+    /**
+     * 返回一份自身的完全拷贝
+     */
+    fun deepCopy(): Trade {
+        return copy(extras = extras?.toMutableMap())
+    }
+}
 
 /**
  * 证券信息
@@ -280,7 +311,18 @@ data class SecurityInfo(
     val optionsUnderlyingCode: String = "",
     val optionsStrikePrice: Double = 0.0,
     var extras: MutableMap<String, String>? = null,
-)
+) {
+    /**
+     * 返回一份自身的完全拷贝
+     */
+    fun deepCopy(): SecurityInfo {
+        return copy(
+            marginRate = marginRate?.deepCopy(),
+            commissionRate = commissionRate?.deepCopy(),
+            extras = extras?.toMutableMap()
+        )
+    }
+}
 
 /**
  * 资产
@@ -303,6 +345,7 @@ data class SecurityInfo(
  */
 data class Assets(
     val accountId: String,
+    val tradingDay: LocalDate,
     var total: Double,
     var available: Double,
     var positionValue: Double,
@@ -321,6 +364,7 @@ data class Assets(
         total = initialCash + totalClosePnl + positionPnl - totalCommission
         return total
     }
+
     /**
      * 计算并更新 [available]（要求 [total], [positionValue], [frozenByOrder] 已到位）
      */
@@ -328,12 +372,20 @@ data class Assets(
         available = total - positionValue - frozenByOrder
         return available
     }
+
     /**
      * 更新数值（先调用 [calculateTotal], 然后调用 [calculateAvailable]）
      */
     fun update() {
         calculateTotal()
         calculateAvailable()
+    }
+
+    /**
+     * 返回一份自身的完全拷贝
+     */
+    fun deepCopy(): Assets {
+        return copy(extras = extras?.toMutableMap())
     }
 }
 
@@ -360,6 +412,7 @@ data class Assets(
  */
 data class Position(
     val accountId: String,
+    val tradingDay: LocalDate,
     val code: String,
     val direction: Direction,
     var preVolume: Int,
@@ -378,6 +431,13 @@ data class Position(
     var extras: MutableMap<String, String>? = null,
 ) {
     val yesterdayVolume: Int get() = volume - todayVolume
+
+    /**
+     * 返回一份自身的完全拷贝
+     */
+    fun deepCopy(): Position {
+        return copy(extras = extras?.toMutableMap())
+    }
 }
 
 /**
@@ -393,18 +453,22 @@ data class PositionDetails(
     val direction: Direction,
     val details: MutableList<PositionDetail> = mutableListOf(),
 ) {
+
     /**
      * 计算汇总持仓量
      */
     fun getVolume(): Int = details.sumOf { it.volume }
+
     /**
      * 计算汇总今仓量
      */
     fun getTodayVolume(): Int = details.sumOf { it.todayVolume }
+
     /**
      * 计算汇总冻结持仓量
      */
     fun getFrozenVolume(): Int = details.sumOf { it.frozenVolume }
+
     /**
      * 计算开仓均价
      */
@@ -417,10 +481,11 @@ data class PositionDetails(
         }
         return sumCost / sumVolume
     }
+
     /**
      * 生成对应的持仓汇总信息
      */
-    fun toPosition(volumeMultiple: Int, preVolume: Int, todayOpenVolume: Int, todayCloseVolume: Int, todayCommission: Double, extras: MutableMap<String, String>? = null): Position {
+    fun toPosition(tradingDay: LocalDate, volumeMultiple: Int, preVolume: Int, todayOpenVolume: Int, todayCloseVolume: Int, todayCommission: Double, extras: MutableMap<String, String>? = null): Position {
         var volume = 0
         var todayVolume = 0
         var frozenVolume = 0
@@ -433,6 +498,7 @@ data class PositionDetails(
         }
         return Position(
             accountId = accountId,
+            tradingDay = tradingDay,
             code = code,
             direction = direction,
             preVolume = preVolume,
@@ -449,6 +515,7 @@ data class PositionDetails(
             extras = extras,
         )
     }
+
     /**
      * 更新已存的持仓汇总对象
      */
@@ -469,6 +536,7 @@ data class PositionDetails(
         position.openCost = openCost
         position.avgOpenPrice = openCost / volume / volumeMultiple
     }
+
     /**
      * 返回开仓价为 [price] 的持仓明细。如果不存在该开仓价的持仓记录，则返回 null
      */
@@ -476,6 +544,7 @@ data class PositionDetails(
         val index = details.binarySearch { sign(it.price - price).toInt()}
         return if (index < 0) null else details[index]
     }
+
     /**
      * 返回开仓价为 [price] 的持仓明细。如果不存在该开仓价的持仓记录，则插入一条空白的持仓明细并返回该新建的持仓明细
      */
@@ -487,6 +556,13 @@ data class PositionDetails(
             details.add(i, detail)
             return@run detail
         }
+    }
+
+    /**
+     * 返回一份自身的完全拷贝
+     */
+    fun deepCopy(): PositionDetails {
+        return copy(details = details.map { it.copy() }.toMutableList())
     }
 }
 
@@ -541,7 +617,14 @@ data class CommissionRate(
     val optionsStrikeRatioByMoney: Double = 0.0,
     val optionsStrikeRatioByVolume: Double = 0.0,
     var extras: MutableMap<String, String>? = null,
-)
+) {
+    /**
+     * 返回一份自身的完全拷贝
+     */
+    fun deepCopy(): CommissionRate {
+        return copy(extras = extras?.toMutableMap())
+    }
+}
 
 /**
  * 期货/期权保证金率
@@ -559,4 +642,11 @@ data class MarginRate(
     val shortMarginRatioByMoney: Double,
     val shortMarginRatioByVolume: Double,
     var extras: MutableMap<String, String>? = null,
-)
+) {
+    /**
+     * 返回一份自身的完全拷贝
+     */
+    fun deepCopy(): MarginRate {
+        return copy(extras = extras?.toMutableMap())
+    }
+}
