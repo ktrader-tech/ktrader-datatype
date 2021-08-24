@@ -128,6 +128,7 @@ data class Bar(
      * 用 [tick] 更新当前 Bar 的数值（不会更新 [endTime] 与 [openPrice]）
      */
     fun updateTick(tick: Tick) {
+        if (openPrice == 0.0) openPrice = tick.lastPrice
         lowPrice = min(lowPrice, tick.lastPrice)
         highPrice = max(highPrice, tick.lastPrice)
         closePrice = tick.lastPrice
@@ -140,6 +141,7 @@ data class Bar(
      * 用 [bar] 更新当前 Bar 的数值（不会更新 [endTime] 与 [openPrice]）
      */
     fun updateBar(bar: Bar) {
+        if (openPrice == 0.0) openPrice = bar.openPrice
         lowPrice = min(lowPrice, bar.lowPrice)
         highPrice = max(highPrice, bar.highPrice)
         closePrice = bar.closePrice
@@ -188,7 +190,7 @@ data class BarInfo(
  * @param extras 额外数据
  */
 data class Order(
-    val accountId: String,
+    var accountId: String,
     val orderId: String,
     val code: String,
     val price: Double,
@@ -252,7 +254,7 @@ data class Order(
  * @param extras 额外数据
  */
 data class Trade(
-    val accountId: String,
+    var accountId: String,
     val tradeId: String,
     val orderId: String,
     val code: String,
@@ -344,8 +346,8 @@ data class SecurityInfo(
  * @param extras 额外数据
  */
 data class Assets(
-    val accountId: String,
-    val tradingDay: LocalDate,
+    var accountId: String,
+    var tradingDay: LocalDate,
     var total: Double,
     var available: Double,
     var positionValue: Double,
@@ -399,7 +401,7 @@ data class Assets(
  * @param value 持仓占用资金
  * @param todayVolume 今仓数量
  * @param frozenVolume 冻结持仓量
- * @param closeableVolume 可平持仓量
+ * @param frozenTodayVolume 冻结的今仓量
  * @param todayOpenVolume 今日累计开仓量
  * @param todayCloseVolume 今日累计平仓量
  * @param todayCommission 今日手续费
@@ -409,17 +411,18 @@ data class Assets(
  * @param pnl 净盈亏额
  * @param extras 额外数据
  * @property yesterdayVolume 昨仓数量
+ * @property frozenYesterdayVolume 冻结的昨仓量
  */
 data class Position(
-    val accountId: String,
-    val tradingDay: LocalDate,
+    var accountId: String,
+    var tradingDay: LocalDate,
     val code: String,
     val direction: Direction,
     var preVolume: Int,
     var volume: Int,
     var todayVolume: Int,
     var frozenVolume: Int,
-    var closeableVolume: Int,
+    var frozenTodayVolume: Int,
     var todayOpenVolume: Int,
     var todayCloseVolume: Int,
     var todayCommission: Double,
@@ -431,6 +434,7 @@ data class Position(
     var extras: MutableMap<String, String>? = null,
 ) {
     val yesterdayVolume: Int get() = volume - todayVolume
+    val frozenYesterdayVolume: Int get() = frozenVolume - frozenTodayVolume
 
     /**
      * 返回一份自身的完全拷贝
@@ -448,39 +452,11 @@ data class Position(
  * @param details 持仓明细记录
  */
 data class PositionDetails(
-    val accountId: String,
+    var accountId: String,
     val code: String,
     val direction: Direction,
     val details: MutableList<PositionDetail> = mutableListOf(),
 ) {
-
-    /**
-     * 计算汇总持仓量
-     */
-    fun getVolume(): Int = details.sumOf { it.volume }
-
-    /**
-     * 计算汇总今仓量
-     */
-    fun getTodayVolume(): Int = details.sumOf { it.todayVolume }
-
-    /**
-     * 计算汇总冻结持仓量
-     */
-    fun getFrozenVolume(): Int = details.sumOf { it.frozenVolume }
-
-    /**
-     * 计算开仓均价
-     */
-    fun getAvgOpenPrice(): Double {
-        var sumCost = 0.0
-        var sumVolume = 0
-        details.forEach {
-            sumCost += it.price * it.volume
-            sumVolume += it.volume
-        }
-        return sumCost / sumVolume
-    }
 
     /**
      * 生成对应的持仓汇总信息
@@ -488,12 +464,10 @@ data class PositionDetails(
     fun toPosition(tradingDay: LocalDate, volumeMultiple: Int, preVolume: Int, todayOpenVolume: Int, todayCloseVolume: Int, todayCommission: Double, extras: MutableMap<String, String>? = null): Position {
         var volume = 0
         var todayVolume = 0
-        var frozenVolume = 0
         var openCost = 0.0
         details.forEach {
             volume += it.volume
             todayVolume += it.todayVolume
-            frozenVolume += it.frozenVolume
             openCost += it.price * it.volume * volumeMultiple
         }
         return Position(
@@ -505,8 +479,8 @@ data class PositionDetails(
             volume = volume,
             value = 0.0,
             todayVolume = todayVolume,
-            frozenVolume = frozenVolume,
-            closeableVolume = 0,
+            frozenVolume = 0,
+            frozenTodayVolume = 0,
             todayOpenVolume = todayOpenVolume,
             todayCloseVolume = todayCloseVolume,
             todayCommission = todayCommission,
@@ -522,17 +496,14 @@ data class PositionDetails(
     fun updatePosition(position: Position, volumeMultiple: Int) {
         var volume = 0
         var todayVolume = 0
-        var frozenVolume = 0
         var openCost = 0.0
         details.forEach {
             volume += it.volume
             todayVolume += it.todayVolume
-            frozenVolume += it.frozenVolume
             openCost += it.price * it.volume * volumeMultiple
         }
         position.volume = volume
         position.todayVolume = todayVolume
-        position.frozenVolume = frozenVolume
         position.openCost = openCost
         position.avgOpenPrice = openCost / volume / volumeMultiple
     }
@@ -550,7 +521,7 @@ data class PositionDetails(
      */
     fun getOrPut(price: Double): PositionDetail {
         return get(price) ?: run {
-            val detail = PositionDetail(price = price)
+            val detail = PositionDetail(accountId = accountId, code = code, direction = direction, price = price)
             var i = details.indexOfFirst { it.price > price }
             i = if (i == -1) details.size else i
             details.add(i, detail)
@@ -568,19 +539,23 @@ data class PositionDetails(
 
 /**
  * 单条持仓明细记录
+ * @param accountId 资金账号
+ * @param code 证券代码
+ * @param direction 持仓方向
  * @param price 开仓价格
  * @param volume 持仓数量
  * @param todayVolume 今仓数量
- * @param frozenVolume 冻结数量
  * @param updateTime 最后持仓变动时间
  * @property yesterdayVolume 昨仓数量
  */
 data class PositionDetail(
+    var accountId: String,
+    val code: String,
+    val direction: Direction,
     val price: Double,
     var volume: Int = 0,
     var todayVolume: Int = 0,
-    var frozenVolume: Int = 0,
-    var updateTime: LocalDateTime = LocalDateTime.now(),
+    var updateTime: LocalDateTime = LocalDateTime.MIN,
 ) {
     val yesterdayVolume: Int get() = volume - todayVolume
 }
