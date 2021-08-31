@@ -33,7 +33,7 @@ dependencies {
 
 ## License
 
-Ktrader-Datatype is released under the [Apache 2.0 license](https://github.com/ktrader-tech/ktrader-datatype/blob/master/LICENSE).
+KTrader-Datatype is released under the [Apache 2.0 license](https://github.com/ktrader-tech/ktrader-datatype/blob/master/LICENSE).
 
 ```
 Copyright 2021 RationalityFrontline
