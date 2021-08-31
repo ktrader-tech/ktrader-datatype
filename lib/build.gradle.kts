@@ -39,6 +39,13 @@ tasks {
         archiveClassifier.set("sources")
         from(sourceSets["main"].allSource)
     }
+    jar {
+        manifest.attributes(mapOf(
+            "Implementation-Title" to NAME,
+            "Implementation-Version" to project.version,
+            "Implementation-Vendor" to "RationalityFrontline"
+        ))
+    }
 }
 
 publishing {
