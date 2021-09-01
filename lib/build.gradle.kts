@@ -1,10 +1,10 @@
 plugins {
-    kotlin("jvm") version "1.5.21"
+    kotlin("jvm") version "1.5.30"
     `java-library`
     `maven-publish`
     signing
     id("org.jetbrains.dokka") version "1.5.0"
-    id("org.javamodularity.moduleplugin") version "1.8.7"
+    id("org.javamodularity.moduleplugin") version "1.8.8"
 }
 
 group = "org.rationalityfrontline.ktrader"
